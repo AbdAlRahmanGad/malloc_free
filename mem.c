@@ -1,17 +1,20 @@
-#include <sys/mman.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <stdint.h>
 #include "mem.h"
+#include <fcntl.h>
+#include <memory.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 typedef struct __node{
         size_t size;
+        size_t number;
         struct __node *next;
     } node;
 
 typedef struct __header{
         size_t size;
+        size_t listNumber;
     } header;
 
     int POLICY;
@@ -33,6 +36,7 @@ int mem_init(int region_size, int policy){
         }
 
         head->size = region_size - sizeof(node);
+        head->number = 1;
         head->next = NULL;
 
         close(fd);
@@ -66,20 +70,24 @@ void *mem_alloc(int size){
                 header *header1 = (header *)pointer;
                 *header1 = (header) {
                         .size = size,
+                        .listNumber = tempNode->number,
                 };
                 pointer += sizeof(header);
+                if (tempNode->size > newNodeSize + sizeof(node)) {
+                    /// new free node
+                    int newFreeSize = tempNode->size - newNodeSize - sizeof(node);
+                    //                node* newNode = tempNode + newNodeSize + sizeof(node);
+                    node *newNode = (node *) ((char *) tempNode + sizeof(node) + newNodeSize);
 
-                /// new free node
-                int newFreeSize = tempNode->size - newNodeSize - sizeof(node);
-//                node* newNode = tempNode + newNodeSize + sizeof(node);
-                node* newNode = (node*)((char*)tempNode + sizeof(node) + newNodeSize);
+                    newNode->number = tempNode->number + 1;
+                    newNode->next = tempNode->next;
+                    newNode->size = newFreeSize;
 
-                newNode->size = newFreeSize;
-                newNode->next = tempNode->next;
-
-                tempNode->next = newNode;
-                tempNode->size = 0;
-
+                    tempNode->next = newNode;
+                    tempNode->size = 0;
+                }else {
+                    tempNode->size = 0;
+                }
                 return pointer;
             }
             tempNode = tempNode->next;
@@ -101,7 +109,36 @@ void *mem_alloc(int size){
     return NULL;
 }
 int mem_free(void *ptr){
+    if (ptr == NULL)
+        return -1;
 
+    /// 1 Free the memory block pointed by ptr
+
+    char *pointer = ptr;
+    pointer -= sizeof(header);
+    header *header1 = (header *)pointer;
+    int size_ = header1->size;
+
+    /// 2 increase the free space size from the free space header
+
+    /// we need a number to specify the free block
+    node* tempNode = head;
+
+    while(tempNode){
+        if(tempNode->number == header1->listNumber){
+            tempNode->size += size_ + sizeof(header);
+            break;
+        }
+        tempNode = tempNode->next;
+    }
+
+    memset(pointer, 0, header1->size + sizeof(header));
+    return 0;
+    /// 3 Coalesce the free space
+    /// TODO
+
+
+    return -1;
 }
 void mem_dump(){
 
