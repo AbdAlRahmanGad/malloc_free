@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdint.h>
 #include "mem.h"
 
 typedef struct __node{
@@ -9,10 +10,18 @@ typedef struct __node{
         struct __node *next;
     } node;
 
+typedef struct __header{
+        size_t size;
+    } header;
+
     int POLICY;
     node* head;
-//16384
+
 int mem_init(int region_size, int policy){
+
+        if(region_size < 1 || policy < 1 || policy > 3){
+            return -1;
+        }
         POLICY = policy;
 
         int fd = open("/dev/zero", O_RDWR);
@@ -42,23 +51,40 @@ void *mem_alloc(int size){
     // if p_first         first
     if (POLICY == p_firstfit){
         node* tempNode = head;
-        while(tempNode->next != NULL ){
-            if(tempNode->size >= size + sizeof (node)){
-                printf("%p", tempNode); // & or &* do not remeber try it
-                printf("%p", tempNode + sizeof(node)); // this is where we are going to place the new node
-                u_int32_t newNodeSize = size + sizeof (node);
-                node* newNode = tempNode + sizeof(node);
-                newNode->size = tempNode->size - newNodeSize;
-                if(tempNode->next == NULL)
-                    newNode->next = NULL;
-                else
-                    newNode->next = tempNode->next;
+        /// padding for performance
+        if (size % 4 != 0){
+            size = size + (4 - size % 4);
+        }
 
+        uint32_t newNodeSize = size + sizeof (header);
 
-                tempNode->size = newNodeSize;
+        while(tempNode){
+            if(tempNode->size >= newNodeSize){
+                /// implement the new node
+
+                char *pointer = ((char*)tempNode + sizeof(node));
+                header *header1 = (header *)pointer;
+                *header1 = (header) {
+                        .size = size,
+                };
+                pointer += sizeof(header);
+
+                /// new free node
+                int newFreeSize = tempNode->size - newNodeSize - sizeof(node);
+//                node* newNode = tempNode + newNodeSize + sizeof(node);
+                node* newNode = (node*)((char*)tempNode + sizeof(node) + newNodeSize);
+
+                newNode->size = newFreeSize;
+                newNode->next = tempNode->next;
+
                 tempNode->next = newNode;
+                tempNode->size = 0;
 
-                return tempNode;
+                return pointer;
+            }
+            tempNode = tempNode->next;
+            if (tempNode == NULL){
+                return NULL;
             }
         }
     }
@@ -72,7 +98,7 @@ void *mem_alloc(int size){
         }
     }
 
-
+    return NULL;
 }
 int mem_free(void *ptr){
 
