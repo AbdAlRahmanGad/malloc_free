@@ -66,7 +66,6 @@ void *mem_alloc(int size) {
                 if (tempNode->size > newNodeSize + sizeof(node)) {
                     /// new free node
                     int newFreeSize = tempNode->size - newNodeSize - sizeof(node);
-                    //                node* newNode = tempNode + newNodeSize + sizeof(node);
                     node *newNode = (node *) ((char *) tempNode + sizeof(node) + newNodeSize);
 
                     newNode->number = tempNode->number + 1;
@@ -111,9 +110,25 @@ int mem_free(void *ptr) {
 
     /// Free the memory block pointed by ptr
     memset(pointer, 0, header1->size + sizeof(header));
-    return 0;
     /// Coalesce the free space
-    /// TODO
+    tempNode = head;
+    node *nodeNext;
+    while (tempNode) {
+        if (tempNode->next != NULL) {
+            nodeNext = tempNode->next;
+            if (tempNode->size != 0 && nodeNext->size != 0) {
+                tempNode->size += nodeNext->size + sizeof(node);
+                tempNode->next = nodeNext->next;
+                memset(nodeNext, 0, sizeof(node));
+            } else {
+                tempNode = tempNode->next;
+            }
+        } else {
+            break;
+        }
+    }
+
+    return 0;
 }
 void mem_dump() {
 }
